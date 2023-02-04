@@ -1,2 +1,257 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+IDEAL
+MODEL small
+STACK 256
+
+DATASEG
+;screen data
+SCREEN_WIDTH equ 40
+SCREEN_HEIGHT equ 25
+
+; Snake data 
+snake_x dw 12,14,16,18,20,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+snake_y dw 5,5,5,5,5,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+SNAKE_LENGTH dw 5
+snake_max_length dw 20
+;messages
+game_over_message db "GAME OVER. heheheha",13,10,"To play again, press any key. to quit, press Q$"
+win_message db "You win",13,10,"To play again, press any key. to quit, press Q$"
+; Snake movement direction
+dir db 'w'
+inc_snake_bool db 0
+; Apple position
+apple_x db 0
+apple_y db 0
+CODESEG
+proc generate_random_position
+	push ax
+	push dx
+	push cx
+	push bx
+  ; Seed the random number generator
+	mov ah, 2Ch
+	int 21h
+	mov cl, al
+	mov ch, ah
+	xor ah, ah
+	mov al, cl
+	mul ch
+	add ax, dx
+	mov cx, ax
+  
+; Generate random X and Y position
+	mov ax, cx
+	xor dx, dx
+	mov bx,39
+	div bx
+	cmp al,0
+	jne continu1
+	inc al
+continu1:	
+	mov [apple_x], al
+	mov ax, cx
+	xor dx, dx
+	mov bx,24
+	div bx
+	cmp al,0
+	jne conti2
+	inc al
+conti2:	
+	mov [apple_y], al
+	pop bx
+	pop cx
+	pop dx
+	pop ax
+	ret
+endp
+proc snake_hit_something
+	push si
+	push bx
+	push dx
+	push cx
+	push ax
+; Check if the snake has hit the walls
+	mov si, [SNAKE_LENGTH]
+	dec si
+	cmp [snake_x+si], 0
+	jle gamovr1
+	cmp [snake_x+si], SCREEN_WIDTH - 1
+	jge gamovr1
+	cmp [snake_y+si], 0
+	jle gamovr1
+	cmp [snake_y+si], SCREEN_HEIGHT - 1
+	jge gamovr1
+
+;check if the snake has hit itself	
+	mov cx, si ;cx is snake_length -1
+	mov bx, offset snake_x
+	jmp check_x
+gamovr1:
+	call game_over
+check_x:
+	mov si, [SNAKE_LENGTH]
+	dec si
+	push si
+	sub si,cx
+	mov ax,[bx+si]
+	pop di
+	cmp ax,[bx+di];snake head x
+	je check_y
+conticheck_x:
+	loop check_x
+	jmp check_ate_apple
+check_y:
+	push bx
+	mov bx, offset snake_y
+	mov ax,[bx+si]
+	cmp ax,[bx+di];snake head y
+	pop bx
+	je gamovr1
+	jmp conticheck_x
+; check if the snake ate the apple(head)
+check_ate_apple:
+	mov ax,[bx]; ax = snake_x[0](head)
+	cmp ax, [word ptr apple_x]
+	jne not_ate_apple
+	mov bx, offset snake_y
+	mov ax,[bx]; ax = snake_y[0](head)
+	cmp ax,[word ptr apple_y]
+	jne not_ate_apple
+	call inc_snake
+not_ate_apple:	
+	pop ax
+	pop cx
+	pop dx
+	pop bx
+	pop si
+	ret
+endp
+proc inc_snake
+	push ax
+	push bx
+	push cx
+	push dx
+	push si
+	inc [snake_length]
+	mov ax, [snake_max_length]
+	cmp ax, [snake_length]
+	jl update_snake_length
+	call win
+update_snake_length:
+	mov cx,[snake_length]
+	dec cx
+	cmp [dir], 'w'
+	je one_up_inc
+	cmp [dir], 's'
+	je one_down_inc
+	cmp [dir], 'd'
+	je one_rigth_inc
+;one_left_inc
+	mov si,cx
+	mov bx, offset snake_x
+	mov ax,[bx+si]
+	dec [word ptr bx+si]
+	dec cx
+left_apple_update:
+	mov si, [snake_length]
+	dec si
+	sub si,cx
+	mov dx,[bx+si]
+	mov [bx+si],ax
+	mov ax,dx
+	loop left_apple_update
+	jmp endp_inc_snake
+;one_left_inc end
+;----------------------------
+one_rigth_inc:
+	mov si,cx
+	mov bx, offset snake_x
+	mov ax,[bx+si]
+	inc [word ptr bx+si]
+	dec cx
+right_apple_update:
+	mov si, [snake_length]
+	dec si
+	sub si,cx
+	mov dx,[bx+si]
+	mov [bx+si],ax
+	mov ax,dx
+	loop right_apple_update
+	jmp endp_inc_snake
+;--------------------------
+one_down_inc:
+	mov si,cx
+	mov bx, offset snake_y
+	mov ax,[bx+si]
+	dec [word ptr bx+si]
+	dec cx
+down_apple_update:
+	mov si, [snake_length]
+	dec si
+	sub si,cx
+	mov dx,[bx+si]
+	mov [bx+si],ax
+	mov ax,dx
+	loop down_apple_update
+	jmp endp_inc_snake
+;----------------------------
+one_up_inc:
+	mov si,cx
+	mov bx, offset snake_y
+	mov ax,[bx+si]
+	dec [word ptr bx+si]
+	dec cx
+up_apple_update:
+	mov si, [snake_length]
+	dec si
+	sub si,cx
+	mov dx,[bx+si]
+	mov [bx+si],ax
+	mov ax,dx
+	loop up_apple_update
+;----------------------------
+endp_inc_snake:	
+	pop si
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	ret
+endp
+proc game_over
+; Display game over message
+	mov ah, 9
+	mov dx, offset game_over_message
+	int 21h
+; Wait for user to press a key
+    mov ah, 00h
+    int 16h
+	cmp al, 'Q'
+	jne start
+	mov ax, 4c00h
+	int 21h
+endp
+proc win
+; Display win message
+	mov ah, 9
+	mov dx, offset win_message
+	int 21h
+	; Wait for user to press a key
+    mov ah, 00h
+    int 16h
+	cmp al, 'Q'
+	jne start
+	mov ax, 4c00h
+	int 21h
+endp
+start:
+    mov ax, @data
+    mov ds, ax
+	mov	ax, 13h
+	int	10h
+; Main game loop
+game_loop:
+
+exit:
+    mov ax, 4C00h
+    int 21h
+END start
